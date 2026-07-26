@@ -76,8 +76,3 @@ pyinstaller --noconfirm --onefile --windowed --name="PkgExtractor_GUI" --icon="i
 Designed as a GUI frontend for `pkg_extractor.exe` from the [shadPS4Plus (AzaharPlus)](https://github.com/AzaharPlus/shadPS4Plus) project.
 
 ---
-
-## 📄 License
-
-Distributed under the **MIT License**. See [LICENSE](LICENSE) for more information.
-```
