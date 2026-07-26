@@ -57,6 +57,25 @@ def get_dir_size_fast(path):
         pass
     return total
 
+# --- Автопоиск pkg_extractor.exe СТРОГО в текущем каталоге ---
+def auto_detect_pkg_extractor():
+    if getattr(sys, 'frozen', False):
+        exe_dir = Path(sys.executable).parent
+    else:
+        exe_dir = Path(__file__).parent
+
+    # 1. Проверяем папку рядом с исполняемым файлом
+    candidate1 = exe_dir / "pkg_extractor.exe"
+    if candidate1.exists():
+        return str(candidate1.resolve())
+
+    # 2. Проверяем текущую рабочую директорию
+    candidate2 = Path.cwd() / "pkg_extractor.exe"
+    if candidate2.exists():
+        return str(candidate2.resolve())
+
+    return "pkg_extractor.exe"
+
 # --- Умный поиск CUSA ID ---
 def find_cusa_for_file(pkg_path):
     cusa_pattern = re.compile(r'CUSA\d{5}', re.IGNORECASE)
@@ -125,7 +144,7 @@ def check_disk_space_single(destination_path, total_size_bytes):
 # --- Менеджер локализации ---
 DEFAULT_LANG_DATA = {
     "ru": {
-        "title": "ShadPs4Plus Pkg Extractor GUI",
+        "title": "Pkg Extractor GUI",
         "paths_group": "Настройки путей",
         "games_dir": "Games:",
         "dlc_dir": "DLC:",
@@ -157,10 +176,11 @@ DEFAULT_LANG_DATA = {
         "type_patch": "Обновление",
         "type_dlc": "DLC",
         "msg_no_space": "Недостаточно места на диске!",
+        "msg_no_extractor": "⚠️ Файл pkg_extractor.exe не найден в текущем каталоге!",
         "msg_enter_id": "Введите CUSA ID для папки:",
     },
     "en": {
-        "title": "ShadPs4Plus Pkg Extractor GUI",
+        "title": "Pkg Extractor GUI",
         "paths_group": "Path Settings",
         "games_dir": "Games:",
         "dlc_dir": "DLC:",
@@ -192,6 +212,7 @@ DEFAULT_LANG_DATA = {
         "type_patch": "Update",
         "type_dlc": "DLC",
         "msg_no_space": "Not enough disk space!",
+        "msg_no_extractor": "⚠️ Executable pkg_extractor.exe not found in current directory!",
         "msg_enter_id": "Enter CUSA ID for folder:",
     }
 }
@@ -237,7 +258,7 @@ class Settings:
     def __init__(self):
         self.games_dir = ""
         self.dlc_dir = ""
-        self.pkg_extractor_path = "pkg_extractor.exe"
+        self.pkg_extractor_path = auto_detect_pkg_extractor()
         self.dlc_keyword = "dlc"
         self.extract_dlc_to_game_id = True
         self.last_folder = ""
@@ -252,7 +273,13 @@ class Settings:
                     data = json.load(f)
                     self.games_dir = data.get('games_dir', "")
                     self.dlc_dir = data.get('dlc_dir', "")
-                    self.pkg_extractor_path = data.get('pkg_extractor_path', "pkg_extractor.exe")
+                    
+                    config_extractor = data.get('pkg_extractor_path', "")
+                    if config_extractor and os.path.exists(config_extractor) and Path(config_extractor).name.lower() == "pkg_extractor.exe":
+                        self.pkg_extractor_path = config_extractor
+                    else:
+                        self.pkg_extractor_path = auto_detect_pkg_extractor()
+                        
                     self.dlc_keyword = data.get('dlc_keyword', "dlc")
                     self.extract_dlc_to_game_id = data.get('extract_dlc_to_game_id', True)
                     self.last_folder = data.get('last_folder', "")
@@ -350,8 +377,21 @@ class ExtractWorker(QThread):
         self.finished_summary.emit(elapsed_sec, self.completed_bytes, g_free, d_free)
 
     def execute_extraction(self, cmd, temp_dir, pkg_path):
+        # Защита от запуска самого себя
+        if Path(self.extractor_path).name.lower() != "pkg_extractor.exe" or not os.path.exists(self.extractor_path):
+            self.log_update.emit(f"❌ Критическая ошибка: Указанный файл не является pkg_extractor.exe")
+            return False
+
         try:
-            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.PIPE, 
+                text=True,
+                creationflags=creation_flags
+            )
             pkg_size = float(pkg_path.stat().st_size)
             
             while process.poll() is None:
@@ -431,7 +471,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # Установка иконки приложения в заголовке
         icon_path = get_resource_path("icon.ico")
         if os.path.exists(icon_path):
             app_icon = QIcon(icon_path)
@@ -461,13 +500,12 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(6)
 
-        # 1. Настройки путей (Логичный порядок: Games & Exe вверху, DLC & Переключатели внизу)
+        # 1. Настройки путей
         self.paths_group = QGroupBox()
         paths_layout = QGridLayout(self.paths_group)
         paths_layout.setContentsMargins(6, 4, 6, 4)
         paths_layout.setSpacing(4)
 
-        # Ряд 0, Колонка 0-2: Games
         self.lbl_games = QLabel()
         paths_layout.addWidget(self.lbl_games, 0, 0)
         self.games_edit = QLineEdit(self.settings.games_dir)
@@ -477,7 +515,6 @@ class MainWindow(QMainWindow):
         self.btn_browse_g.clicked.connect(lambda: self.browse_folder(self.games_edit, "games"))
         paths_layout.addWidget(self.btn_browse_g, 0, 2)
 
-        # Ряд 0, Колонка 3-5: Исполняемый файл pkg_extractor.exe (ПЕРЕНЕСЕНО НАВЕРХ)
         self.lbl_extractor = QLabel()
         paths_layout.addWidget(self.lbl_extractor, 0, 3)
         self.extractor_edit = QLineEdit(self.settings.pkg_extractor_path)
@@ -487,7 +524,6 @@ class MainWindow(QMainWindow):
         self.btn_browse_e.clicked.connect(self.browse_extractor)
         paths_layout.addWidget(self.btn_browse_e, 0, 5)
 
-        # Ряд 1, Колонка 0-2: Папка DLC (ПЕРЕНЕСЕНО ВНИЗ)
         self.lbl_dlc = QLabel()
         paths_layout.addWidget(self.lbl_dlc, 1, 0)
         self.dlc_edit = QLineEdit(self.settings.dlc_dir)
@@ -497,7 +533,6 @@ class MainWindow(QMainWindow):
         self.btn_browse_d.clicked.connect(lambda: self.browse_folder(self.dlc_edit, "dlc"))
         paths_layout.addWidget(self.btn_browse_d, 1, 2)
 
-        # Ряд 1, Колонка 3-5: Переключатели Тема / Язык
         ctrl_layout = QHBoxLayout()
         ctrl_layout.setSpacing(4)
 
@@ -555,7 +590,6 @@ class MainWindow(QMainWindow):
         tbl_layout.addWidget(self.table)
         self.splitter.addWidget(table_container)
 
-        # Лог контейнер (Заголовок + Кнопка очистки над текстовым полем)
         log_container = QWidget()
         log_layout = QVBoxLayout(log_container)
         log_layout.setContentsMargins(0, 0, 0, 0)
@@ -567,7 +601,6 @@ class MainWindow(QMainWindow):
         log_header_layout.addWidget(self.log_title_lbl)
         log_header_layout.addStretch()
 
-        # Кнопка очистки перенесена НАД логом
         self.btn_clear_log = QPushButton()
         self.btn_clear_log.clicked.connect(self.log_text_clear_action)
         log_header_layout.addWidget(self.btn_clear_log)
@@ -614,7 +647,7 @@ class MainWindow(QMainWindow):
 
     def retranslate_ui(self):
         tr = self.lang_mgr.tr
-        self.setWindowTitle("ShadPs4Plus Pkg Extractor GUI")
+        self.setWindowTitle("Pkg Extractor GUI")
         self.paths_group.setTitle(tr("paths_group"))
         self.lbl_games.setText(tr("games_dir"))
         self.lbl_dlc.setText(tr("dlc_dir"))
@@ -627,7 +660,6 @@ class MainWindow(QMainWindow):
         theme_keys = {"dark": "theme_dark", "light": "theme_light"}
         self.theme_btn.setText(tr(theme_keys.get(self.settings.theme, "theme_dark")))
 
-        # Форматирование пунка Auto через языковой файл
         auto_detected = self.lang_mgr.detect_lang("auto")
         auto_suffix = "(ru)" if auto_detected == "ru" else "(en)"
         auto_label = f"{tr('lang_auto')} {auto_suffix}"
@@ -652,7 +684,7 @@ class MainWindow(QMainWindow):
         self.update_status_style()
 
         if not self.worker or not self.worker.isRunning():
-            self.status_label.setText(tr("ready"))
+            self.check_settings()
 
         for row in range(self.table.rowCount()):
             if row < len(self.pkg_files):
@@ -739,9 +771,48 @@ class MainWindow(QMainWindow):
         self.lang_mgr.set_language(selected_lang)
         self.retranslate_ui()
 
+    # --- Строгая проверка путей и защита от запуска самой оболочки ---
     def check_settings(self):
         if not self.settings.games_dir or not self.settings.dlc_dir:
             self.status_label.setText("⚠️ Настройте пути к папкам Games и DLC!")
+            self.start_button.setEnabled(False)
+            return False
+
+        extractor_path = Path(self.settings.pkg_extractor_path)
+        
+        # Проверяем, что запуск указывает строго на pkg_extractor.exe и это НЕ файл приложения
+        is_valid_extractor = (
+            extractor_path.exists() and 
+            extractor_path.name.lower() == "pkg_extractor.exe" and
+            str(extractor_path.resolve()) != str(Path(sys.executable).resolve())
+        )
+
+        if not is_valid_extractor:
+            auto_path = auto_detect_pkg_extractor()
+            if Path(auto_path).exists() and Path(auto_path).name.lower() == "pkg_extractor.exe":
+                self.settings.pkg_extractor_path = auto_path
+                self.extractor_edit.setText(auto_path)
+                self.settings.save()
+                is_valid_extractor = True
+
+        if not is_valid_extractor:
+            self.status_label.setText(self.lang_mgr.tr("msg_no_extractor"))
+            self.start_button.setEnabled(False)
+            return False
+
+        if self.pkg_files:
+            space_ok, _, _ = check_smart_disk_space(self.settings.games_dir, self.settings.dlc_dir, self.total_size)
+            if space_ok:
+                self.start_button.setEnabled(True)
+                self.status_label.setText(f"Готово к обработке {len(self.pkg_files)} файлов")
+            else:
+                self.start_button.setEnabled(False)
+                self.status_label.setText(self.lang_mgr.tr("msg_no_space"))
+        else:
+            self.status_label.setText(self.lang_mgr.tr("ready"))
+            self.start_button.setEnabled(False)
+
+        return True
 
     def browse_folder(self, line_edit, folder_type):
         folder = QFileDialog.getExistingDirectory(self, "Выберите папку", self.settings.last_folder)
@@ -752,13 +823,19 @@ class MainWindow(QMainWindow):
             elif folder_type == "dlc":
                 self.settings.dlc_dir = folder
             self.settings.save()
+            self.check_settings()
 
     def browse_extractor(self):
         file, _ = QFileDialog.getOpenFileName(self, "pkg_extractor.exe", "", "Executable Files (*.exe)")
         if file:
+            # Запрещаем выбырать саму оболочку
+            if Path(file).name.lower() != "pkg_extractor.exe":
+                self.log_text.append("❌ Ошибка: выберите именно файл pkg_extractor.exe")
+                return
             self.extractor_edit.setText(file)
             self.settings.pkg_extractor_path = file
             self.settings.save()
+            self.check_settings()
 
     def add_files(self):
         files, _ = QFileDialog.getOpenFileNames(self, "PKG Files", self.settings.last_folder, "PKG Files (*.pkg)")
@@ -781,7 +858,7 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(0)
         self.start_button.setEnabled(False)
         self.progress_bar.setValue(0)
-        self.status_label.setText(self.lang_mgr.tr("ready"))
+        self.check_settings()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -917,16 +994,15 @@ class MainWindow(QMainWindow):
         for msg in space_msgs:
             self.log_text.append(msg)
         
-        if space_ok:
-            self.start_button.setEnabled(True)
-            self.status_label.setText(f"Готово к обработке {len(self.pkg_files)} файлов")
-        else:
-            self.start_button.setEnabled(False)
-            self.status_label.setText(self.lang_mgr.tr("msg_no_space"))
+        self.check_settings()
 
     def start_extraction(self):
         if not self.pkg_files:
             return
+            
+        if not self.check_settings():
+            return
+
         self.start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.progress_bar.setValue(0)
