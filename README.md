@@ -7,7 +7,7 @@
 
 ## Russian
 
-**PKG Extractor GUI** — это удобная графическая оболочка (GUI), написанная на **Python (PyQt6)** для консольной утилиты `pkg_extractor.exe` (v1.1+).
+**PKG Extractor GUI** — это удобная графическая оболочка (GUI), написанная на **Python (PyQt6)** для консольной утилиты `pkg_extractor.exe` (v1.1+) из проекта [shadPS4Plus (AzaharPlus)](https://github.com/AzaharPlus/shadPS4Plus).
 
 Приложение автоматизирует пакетную обработку `.pkg` архивов: распределяет основной контент, обновления и дополнения (DLC), сопоставляет ID контента и объединяет папки с отслеживанием прогресса в реальном времени.
 
@@ -36,14 +36,11 @@ pip install PyQt6 pyinstaller
 pyinstaller --noconfirm --onefile --windowed --name="PkgExtractor_GUI" --icon="icon.ico" --add-data "icon.ico;." PkgExtractor_GUI.py
 ```
 
-### 👏 Благодарности
-Графическая оболочка разработана для работы с `pkg_extractor.exe` из проекта [shadPS4Plus (AzaharPlus)](https://github.com/AzaharPlus/shadPS4Plus).
-
 ---
 
 ## English
 
-**PKG Extractor GUI** is a lightweight, modern graphical user interface (GUI) built with **Python & PyQt6** for the `pkg_extractor.exe` (v1.1+) CLI utility.
+**PKG Extractor GUI** is a lightweight, modern graphical user interface (GUI) built with **Python & PyQt6** for the `pkg_extractor.exe` (v1.1+) CLI utility from the [shadPS4Plus (AzaharPlus)](https://github.com/AzaharPlus/shadPS4Plus) project.
 
 It simplifies batch processing of `.pkg` archives by automatically categorizing base content, patches/updates, and add-ons (DLCs), matching content IDs, and managing directory merging with real-time progress monitoring.
 
@@ -71,8 +68,3 @@ pip install PyQt6 pyinstaller
 # Build Single Executable
 pyinstaller --noconfirm --onefile --windowed --name="PkgExtractor_GUI" --icon="icon.ico" --add-data "icon.ico;." PkgExtractor_GUI.py
 ```
-
-### 👏 Credits
-Designed as a GUI frontend for `pkg_extractor.exe` from the [shadPS4Plus (AzaharPlus)](https://github.com/AzaharPlus/shadPS4Plus) project.
-
----
