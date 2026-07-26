@@ -1,0 +1,12 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual Environment
+venv/
+ENV/
+
+# PyInstaller build outputs
+build/
+dist/
+*.spec
