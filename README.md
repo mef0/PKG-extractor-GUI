@@ -19,7 +19,7 @@
 - 🧠 **Умное определение Content ID**: Анализирует имена файлов, структуру папок и соседние элементы для точной группировки.
 - 🗂️ **Автоматическая сортировка**:
   - **Основной контент и Обновления** → Автоматически объединяются в `Games/CUSAXXXXX/`.
-  - **Дополнения (DLC)** → Распаковываются в `_DLC/CUSAXXXXX/`.
+  - **Дополнения (DLC)** → Распаковываются в `DLC/CUSAXXXXX/`.
 - 📁 **Накопительное добавление Drag & Drop**: Пакетное добавление файлов и папок с защитой от дубликатов.
 
 ### 🛠️ Сборка EXE файла (Windows CMD)
@@ -52,7 +52,7 @@ You can download the latest pre-built Windows standalone executable directly fro
 - 🧠 **Smart Content ID Detection**: Scans filenames, parent folders, and sibling directory structure to accurately group packages.
 - 🗂️ **Automated Category Sorting**:
   - **Base Games & Updates** → Extracted and automatically merged into `Games/CUSAXXXXX/`.
-  - **Add-ons / DLCs** → Extracted into `_DLC/CUSAXXXXX/`.
+  - **Add-ons / DLCs** → Extracted into `DLC/CUSAXXXXX/`.
 - 📁 **Cumulative Drag & Drop**: Add multiple files or folders seamlessly with duplicate path protection.
 
 ### 🛠️ Building Executable (Windows CMD)
