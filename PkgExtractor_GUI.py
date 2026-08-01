@@ -94,11 +94,9 @@ def find_cusa_for_file(pkg_path):
 
 # --- Определение типа PKG ---
 def classify_pkg_type(pkg_path, is_dlc_flag):
-    if is_dlc_flag:
-        return "dlc"
-        
     name_lower = pkg_path.name.lower()
     
+    # 1. Если в названии есть явное указание на патч/обновление — это Update
     if any(kw in name_lower for kw in ['update', 'patch', 'backport', 'fix']):
         return "update"
         
@@ -107,6 +105,14 @@ def classify_pkg_type(pkg_path, is_dlc_flag):
         ver_str = match.group(1).replace('.', '')
         if ver_str != '0100':
             return "update"
+
+    # 2. Если в имени явно написано "game", это Игра, а не DLC
+    if "game" in name_lower and not any(kw in name_lower for kw in ['dlc', 'unlock', 'addon']):
+        return "game"
+
+    # 3. Если стоит флаг DLC и это не патч/игра
+    if is_dlc_flag:
+        return "dlc"
             
     return "game"
 
@@ -174,6 +180,7 @@ DEFAULT_LANG_DATA = {
         "status_extracting": "Извлечение...",
         "status_done": "Готово",
         "status_error": "Ошибка",
+        "status_in_progress": "⏳ В процессе...",
         "type_game": "Игра",
         "type_patch": "Обновление",
         "type_dlc": "DLC",
@@ -240,6 +247,7 @@ DEFAULT_LANG_DATA = {
         "status_extracting": "Extracting...",
         "status_done": "Done",
         "status_error": "Error",
+        "status_in_progress": "⏳ In Progress...",
         "type_game": "Game",
         "type_patch": "Update",
         "type_dlc": "DLC",
@@ -306,6 +314,7 @@ DEFAULT_LANG_DATA = {
         "status_extracting": "در حال استخراج...",
         "status_done": "انجام شد",
         "status_error": "خطا",
+        "status_in_progress": "⏳ در حال انجام...",
         "type_game": "بازی",
         "type_patch": "به‌روزرسانی",
         "type_dlc": "DLC",
@@ -372,6 +381,7 @@ DEFAULT_LANG_DATA = {
         "status_extracting": "Extrayendo...",
         "status_done": "Hecho",
         "status_error": "Error",
+        "status_in_progress": "⏳ En proceso...",
         "type_game": "Juego",
         "type_patch": "Actualización",
         "type_dlc": "DLC",
@@ -438,6 +448,7 @@ DEFAULT_LANG_DATA = {
         "status_extracting": "Entpacken...",
         "status_done": "Fertig",
         "status_error": "Fehler",
+        "status_in_progress": "⏳ In Bearbeitung...",
         "type_game": "Spiel",
         "type_patch": "Update",
         "type_dlc": "DLC",
@@ -973,7 +984,12 @@ class MainWindow(QMainWindow):
         self.log_title_lbl.setText(f"📝 {tr('log_title')}")
         self.btn_clear_log.setText(tr("clear_log"))
         
-        self.start_button.setText(tr("start_btn"))
+        # Перевод кнопки Начать / В процессе
+        if self.worker and self.worker.isRunning():
+            self.start_button.setText(tr("status_in_progress"))
+        else:
+            self.start_button.setText(tr("start_btn"))
+
         self.cancel_button.setText(tr("cancel_btn"))
 
         self.update_status_style()
@@ -995,7 +1011,6 @@ class MainWindow(QMainWindow):
                 self.apply_cell_type_color(type_item, pkg)
                 self.table.setItem(row, 1, type_item)
 
-        # Мгновенный переперевод уже имеющегося лога в реальном времени!
         if self.pkg_files:
             self.update_log_summary()
 
@@ -1100,14 +1115,22 @@ class MainWindow(QMainWindow):
         self.retranslate_ui()
 
     def check_settings(self):
-        if not self.settings.games_dir or not self.settings.dlc_dir:
-            self.status_label.setText(self.lang_mgr.tr("paths_group"))
-            self.start_button.setEnabled(False)
-            return False
+        # Стиль для невалидных/пустых полей (универсальный красноватый фон для Dark и Light тем)
+        INVALID_STYLE = "background-color: rgba(255, 80, 80, 0.25); border: 1px solid #ff5252;"
+        VALID_STYLE = ""
 
+        # 1. Проверка директории Games
+        is_games_valid = bool(self.settings.games_dir) and os.path.exists(self.settings.games_dir)
+        self.games_edit.setStyleSheet(VALID_STYLE if is_games_valid else INVALID_STYLE)
+
+        # 2. Проверка директории DLC
+        is_dlc_valid = bool(self.settings.dlc_dir) and os.path.exists(self.settings.dlc_dir)
+        self.dlc_edit.setStyleSheet(VALID_STYLE if is_dlc_valid else INVALID_STYLE)
+
+        # 3. Проверка pkg_extractor.exe
         extractor_path = Path(self.settings.pkg_extractor_path)
-        
         is_valid_extractor = (
+            bool(self.settings.pkg_extractor_path) and
             extractor_path.exists() and 
             extractor_path.name.lower() == "pkg_extractor.exe" and
             str(extractor_path.resolve()) != str(Path(sys.executable).resolve())
@@ -1121,10 +1144,22 @@ class MainWindow(QMainWindow):
                 self.settings.save()
                 is_valid_extractor = True
 
+        self.extractor_edit.setStyleSheet(VALID_STYLE if is_valid_extractor else INVALID_STYLE)
+
+        # Проверка всех путей
+        if not is_games_valid or not is_dlc_valid:
+            self.status_label.setText(self.lang_mgr.tr("paths_group"))
+            self.start_button.setEnabled(False)
+            return False
+
         if not is_valid_extractor:
             self.status_label.setText(self.lang_mgr.tr("msg_no_extractor"))
             self.start_button.setEnabled(False)
             return False
+
+        # Если распаковка уже идет, не меняем состояние кнопки Start
+        if self.worker and self.worker.isRunning():
+            return True
 
         if self.pkg_files:
             space_ok, _, _ = check_smart_disk_space(self.settings.games_dir, self.settings.dlc_dir, self.total_size, self.lang_mgr)
@@ -1220,10 +1255,15 @@ class MainWindow(QMainWindow):
         pkg_objects = []
         for pkg_path in all_pkg_paths:
             name_lower = pkg_path.name.lower()
-            is_dlc_flag = self.settings.dlc_keyword.lower() in str(pkg_path.parent).lower()
+            
+            # Проверка родительской папки (только непосредственно папки файла, без полного пути)
+            is_dlc_flag = self.settings.dlc_keyword.lower() in pkg_path.parent.name.lower()
+            
+            # Безопасный строго фильтрованный список для DLC
             if not is_dlc_flag:
-                for kw in ['point', 'bundle', 'vanity', 'fighter', 'kumite', 'starter', 'premium', 'rainbows', 'unicorns']:
-                    if kw in name_lower:
+                safe_dlc_keywords = ['dlc', 'unlocker', 'addon']
+                for kw in safe_dlc_keywords:
+                    if re.search(r'\b' + re.escape(kw) + r'\b', name_lower):
                         is_dlc_flag = True
                         break
             
@@ -1317,6 +1357,7 @@ class MainWindow(QMainWindow):
             return
 
         self.start_button.setEnabled(False)
+        self.start_button.setText(self.lang_mgr.tr("status_in_progress"))
         self.cancel_button.setEnabled(True)
         self.progress_bar.setValue(0)
         
@@ -1352,7 +1393,7 @@ class MainWindow(QMainWindow):
         is_en = (self.lang_mgr.current_lang != "ru")
 
         self.progress_bar.setValue(100)
-        self.start_button.setEnabled(True)
+        self.start_button.setText(tr("start_btn"))
         self.cancel_button.setEnabled(False)
         self.status_label.setText(tr("ready"))
         
@@ -1377,6 +1418,8 @@ class MainWindow(QMainWindow):
             self.log_text.append(tr("log_free_space_multi"))
             self.log_text.append(f"   • Games: {games_free}")
             self.log_text.append(f"   • DLC: {dlc_free}")
+
+        self.check_settings()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
